@@ -1,0 +1,4 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+body { @apply bg-navy-950 text-white antialiased; font-family: Inter, system-ui, sans-serif; }

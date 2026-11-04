@@ -1,0 +1,202 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum ProjectMode {
+  SILENT_DRAFT
+  FINAL_RENDER
+}
+
+enum RenderStatus {
+  QUEUED
+  RENDERING
+  COMPLETED
+  FAILED
+  CANCELED
+}
+
+enum CaptionFormat {
+  SRT
+  VTT
+}
+
+model User {
+  id           String        @id @default(cuid())
+  email        String        @unique
+  name         String?
+  createdAt    DateTime      @default(now())
+  projects     Project[]
+  brandPresets BrandPreset[]
+  mediaAssets  MediaAsset[]
+}
+
+model BrandPreset {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name            String
+  primaryColor    String
+  accentColor     String
+  backgroundColor String
+  textColor       String
+  fontFamily      String
+  logoUrl         String?
+  watermarkUrl    String?
+  projects        Project[]
+  createdAt       DateTime @default(now())
+}
+
+model Project {
+  id            String             @id @default(cuid())
+  userId        String
+  user          User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title         String
+  mode          ProjectMode        @default(SILENT_DRAFT)
+  visualStyle   String
+  format        String             @default("16:9")
+  brandPresetId String?
+  brandPreset   BrandPreset?       @relation(fields: [brandPresetId], references: [id])
+  script        Script?
+  storyboards   StoryboardVersion[]
+  voiceover     Voiceover?
+  captionFile   CaptionFile?
+  assets        Asset[]
+  renders       RenderJob[]
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  @@index([userId])
+}
+
+model Script {
+  id                       String  @id @default(cuid())
+  projectId                String  @unique
+  project                  Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  originalText             String
+  wordCount                Int
+  wordsPerMinute           Int     @default(150)
+  estimatedDurationSeconds Float
+  updatedAt                DateTime @updatedAt
+}
+
+model StoryboardVersion {
+  id          String      @id @default(cuid())
+  projectId   String
+  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  version     Int
+  source      String      // "groq" | "manual" | "alignment"
+  rawResponse Json?       // raw Groq output kept for debugging
+  plan        ScenePlan?
+  createdAt   DateTime    @default(now())
+  @@unique([projectId, version])
+}
+
+model ScenePlan {
+  id                String            @id @default(cuid())
+  storyboardId      String            @unique
+  storyboard        StoryboardVersion @relation(fields: [storyboardId], references: [id], onDelete: Cascade)
+  planJson          Json              // validated VidscriptPlan
+  scenes            Scene[]
+  approved          Boolean           @default(false)
+}
+
+model Scene {
+  id          String    @id @default(cuid())
+  scenePlanId String
+  scenePlan   ScenePlan @relation(fields: [scenePlanId], references: [id], onDelete: Cascade)
+  position    Int
+  startSeconds Float
+  endSeconds   Float
+  type        String
+  dataJson    Json
+  @@index([scenePlanId, position])
+}
+
+model Voiceover {
+  id              String   @id @default(cuid())
+  projectId       String   @unique
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  url             String
+  fileName        String
+  sizeBytes       Int
+  durationSeconds Float
+  storageKey      String?  // path under STORAGE_DIR, generated server-side
+  mimeType        String?
+  uploadedAt      DateTime @default(now())
+}
+
+model CaptionFile {
+  id               String        @id @default(cuid())
+  projectId        String        @unique
+  project          Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  url              String
+  fileName         String
+  format           CaptionFormat
+  cueCount         Int
+  validationStatus String        // "valid" | "invalid"
+  validationErrors Json?
+  storageKey       String?       // original file, stored byte-for-byte
+  preset           String        @default("boxed")
+  enabled          Boolean       @default(true)
+  uploadedAt       DateTime      @default(now())
+}
+
+model Asset {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  kind      String
+  cacheKey  String   @unique // deterministic hash of inputs
+  url       String
+  meta      Json?
+  createdAt DateTime @default(now())
+}
+
+model RenderJob {
+  id          String       @id @default(cuid())
+  projectId   String
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  mode        ProjectMode
+  status      RenderStatus @default(QUEUED)
+  progress    Float        @default(0)
+  outputUrl   String?
+  errorMessage String?
+  lambdaRenderId String?
+  storyboardVersion Int?     // which saved storyboard this render used
+  outputFiles Json?          // names of files written for this render
+  startedAt   DateTime?
+  completedAt DateTime?
+  createdAt   DateTime     @default(now())
+  @@index([projectId])
+}
+
+// Downloaded stock photos and clips. Per user, so the same file is never downloaded twice.
+model MediaAsset {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cacheKey        String   // "<provider>:<providerId>:<kind>"
+  provider        String
+  providerId      String
+  kind            String   // "image" | "video"
+  query           String?
+  storageKey      String   // path under STORAGE_DIR
+  mimeType        String
+  sizeBytes       Int
+  sha256          String
+  width           Int
+  height          Int
+  durationSeconds Float?
+  license         String
+  credit          String
+  creditUrl       String?
+  pageUrl         String
+  createdAt       DateTime @default(now())
+
+  @@unique([userId, cacheKey])
+  @@index([userId, sha256])
+}
