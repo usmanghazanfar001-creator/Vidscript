@@ -10,7 +10,8 @@
     "test": "vitest run",
     "db:migrate": "prisma migrate dev",
     "remotion:studio": "remotion studio src/remotion/index.ts",
-    "render:draft": "tsx scripts/render-draft.ts"
+    "render:draft": "tsx scripts/render-draft.ts",
+    "auth:setup": "tsx scripts/auth-setup.ts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1160.0",

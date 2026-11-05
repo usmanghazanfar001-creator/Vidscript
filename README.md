@@ -105,4 +105,15 @@ The storyboard now asks Groq for a short search phrase and a Photo/Video choice 
 - Pixabay asks that search results show their source, which the picker does ("via Pixabay"); chosen files are downloaded and hosted locally rather than hotlinked.
 
 Run `npx prisma migrate dev --name add_media_assets` (adds one new table; nothing existing changes).
-"# Vidscript" 
+
+## Sign-in (live site)
+
+The whole app, pages and API, sits behind one owner password. Only the landing page and `/login` are public.
+
+1. Run `npm run auth:setup`. It asks for a password (at least 12 characters, hidden as you type) and prints two lines: `OWNER_PASSWORD_HASH` (a one-way hash, not your password) and `AUTH_SECRET` (random, signs the session cookie).
+2. Put both lines in `.env` and in the Vercel project's Environment Variables (Settings, then Environment Variables). Also add `OWNER_USER_ID=dev-user` if you want the projects you already made locally.
+3. Redeploy. Visit the site: you are sent to `/login`.
+
+How it works: the password is checked with scrypt; a successful sign-in sets a signed, HTTP-only, SameSite cookie valid for 30 days; middleware verifies it on every request and passes the user id to the app in a header that clients cannot set. After 5 wrong passwords from one address the sign-in is blocked for 15 minutes (the counter lives in memory, so it is per server instance). `DEV_USER_ID` only works in local development and is ignored in production. Changing `AUTH_SECRET` signs everyone out.
+
+Known limits for now: the renderer fetches stored stock assets from the app's own URL without a session, so renders that use stock visuals only work in local development until storage moves to B2.
