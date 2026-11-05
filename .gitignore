@@ -1,8 +1,15 @@
-node_modules
-.next
-.env
-out
-storage
+# Dependencies
+node_modules/
+
+# Next.js and build output (project root only)
+.next/
+/out/
+/dist/
+/build/
+
+# Files the app writes while running: renders, uploads, downloaded stock assets.
+# Root only, because src/lib/storage/ is source code and must be committed.
+/storage/
 
 # Environment variables and secrets
 .env
@@ -10,9 +17,5 @@ storage
 .env.development.local
 .env.production.local
 
-# Dependencies
-node_modules/
-
-# Build files
-dist/
-build/
+# TypeScript incremental cache
+tsconfig.tsbuildinfo
