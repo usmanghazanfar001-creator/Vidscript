@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db/client";
 import { createLimiter } from "@/lib/authn/limiter";
-import { verifyPassword } from "@/lib/authn/password";
+import { isValidStoredHash, verifyPassword } from "@/lib/authn/password";
 import { MIN_SECRET_LENGTH, SESSION_COOKIE, SESSION_DAYS, newSession, signSession } from "@/lib/authn/session";
 
 export const runtime = "nodejs";
@@ -16,6 +16,11 @@ export async function POST(req: Request) {
   const secret = process.env.AUTH_SECRET;
   if (!hash || !secret || secret.length < MIN_SECRET_LENGTH) {
     return NextResponse.json({ error: "Sign-in is not set up on this server. Add OWNER_PASSWORD_HASH and AUTH_SECRET (see README)." }, { status: 500 });
+  }
+
+  // A hash that is pasted wrongly can never match, so say so rather than blaming the password.
+  if (!isValidStoredHash(hash)) {
+    return NextResponse.json({ error: "The OWNER_PASSWORD_HASH setting is not valid. It must be the single value that starts with scrypt: and nothing else. Run npm run auth:setup again and paste only the part after the = sign." }, { status: 500 });
   }
 
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { hashPassword, verifyPassword } from "@/lib/authn/password";
+import { cleanStoredHash, hashPassword, isValidStoredHash, verifyPassword } from "@/lib/authn/password";
 import { newSession, signSession, verifySession, SESSION_DAYS } from "@/lib/authn/session";
 import { buildForwardHeaders, decideAccess, resolveUserId, safeNext } from "@/lib/authn/access";
 import { createLimiter } from "@/lib/authn/limiter";
@@ -111,3 +111,21 @@ describe("sign-in rate limit", () => {
     expect(l.check("ip", 3).allowed).toBe(true);
   });
 });
+
+describe("pasting the hash into a settings page", () => {
+  it("still works with the label, quotes, spaces or a trailing newline pasted along with it", async () => {
+    const h = await hashPassword("my long password 123");
+    for (const pasted of [`OWNER_PASSWORD_HASH=${h}`, `OWNER_PASSWORD_HASH = ${h}`, `"${h}"`, `'${h}'`, `  ${h}\n`, `\n${h}\r\n`, `OWNER_PASSWORD_HASH="${h}"`]) {
+      expect(cleanStoredHash(pasted), pasted.slice(0, 30)).toBe(h);
+      expect(await verifyPassword("my long password 123", pasted)).toBe(true);
+      expect(await verifyPassword("not the password", pasted)).toBe(false);
+    }
+  });
+  it("tells a broken setting apart from a wrong password", async () => {
+    const h = await hashPassword("my long password 123");
+    expect(isValidStoredHash(h)).toBe(true);
+    expect(isValidStoredHash(`OWNER_PASSWORD_HASH=${h}`)).toBe(true);
+    for (const broken of [undefined, "", "my plain password", h.slice(0, 40), h.replace("scrypt", "bcrypt"), `${h}:extra`]) expect(isValidStoredHash(broken), String(broken)).toBe(false);
+  });
+});
+

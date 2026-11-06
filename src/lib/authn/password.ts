@@ -14,14 +14,33 @@ export async function hashPassword(password: string): Promise<string> {
   return `scrypt:${N}:${r}:${p}:${salt.toString("hex")}:${key.toString("hex")}`;
 }
 
-export async function verifyPassword(password: string, stored: string | undefined): Promise<boolean> {
-  const parts = (stored ?? "").split(":");
-  if (parts.length !== 6 || parts[0] !== "scrypt") return false;
+/** Tolerates the usual copy/paste slips: spaces or a newline around the value, quote marks, or the "OWNER_PASSWORD_HASH=" label pasted with it. */
+export function cleanStoredHash(stored: string | undefined): string {
+  let s = (stored ?? "").trim();
+  s = s.replace(/^OWNER_PASSWORD_HASH\s*=\s*/, "");
+  s = s.replace(/^(["'])(.*)\1$/s, "$2");
+  return s.trim();
+}
+
+type ParsedHash = { N: number; r: number; p: number; salt: Buffer; expected: Buffer };
+
+function parseHash(stored: string | undefined): ParsedHash | null {
+  const parts = cleanStoredHash(stored).split(":");
+  if (parts.length !== 6 || parts[0] !== "scrypt") return null;
   const [N, r, p] = [Number(parts[1]), Number(parts[2]), Number(parts[3])];
-  if (![N, r, p].every(Number.isInteger) || N < 2 || N > MAX_N || (N & (N - 1)) !== 0 || r < 1 || r > 16 || p < 1 || p > 4) return false;
-  if (!/^[0-9a-f]+$/i.test(parts[4]!) || !/^[0-9a-f]+$/i.test(parts[5]!)) return false;
+  if (![N, r, p].every(Number.isInteger) || N < 2 || N > MAX_N || (N & (N - 1)) !== 0 || r < 1 || r > 16 || p < 1 || p > 4) return null;
+  if (!/^[0-9a-f]+$/i.test(parts[4]!) || !/^[0-9a-f]+$/i.test(parts[5]!)) return null;
   const expected = Buffer.from(parts[5]!, "hex");
-  if (expected.length < 16) return false;
-  const actual = await scrypt(password, Buffer.from(parts[4]!, "hex"), expected.length, N, r, p);
-  return timingSafeEqual(actual, expected);
+  if (expected.length < 16) return null;
+  return { N, r, p, salt: Buffer.from(parts[4]!, "hex"), expected };
+}
+
+/** True when the setting is a usable hash. Lets the login say "your setting is broken" instead of "wrong password". */
+export const isValidStoredHash = (stored: string | undefined): boolean => parseHash(stored) !== null;
+
+export async function verifyPassword(password: string, stored: string | undefined): Promise<boolean> {
+  const h = parseHash(stored);
+  if (!h) return false;
+  const actual = await scrypt(password, h.salt, h.expected.length, h.N, h.r, h.p);
+  return timingSafeEqual(actual, h.expected);
 }
